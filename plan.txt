@@ -1,0 +1,47 @@
+Plan to Replace querystring with URLSearchParams in Koa
+
+1. Analysis
+- The querystring module is currently used in request.js for parsing query strings
+- Main usage is in the query getter/setter methods
+- Need to ensure backward compatibility while improving standards compliance
+
+2. Changes Required
+a) In request.js:
+- Remove querystring module import
+- Update query getter to use URLSearchParams instead of querystring.parse
+- Update query setter to use URLSearchParams instead of querystring.stringify
+- Ensure the URL class is properly imported and used
+- Maintain caching behavior for performance
+
+3. Implementation Steps
+1. Remove 'qs' require and add URL class if not already present
+2. Modify query getter to:
+   - Create URLSearchParams from querystring
+   - Convert URLSearchParams to plain object for compatibility
+   - Maintain caching for performance
+3. Modify query setter to:
+   - Convert object to URLSearchParams
+   - Get string representation for URL
+   - Update querystring with new value
+
+4. Testing Considerations
+- Verify all existing query string parsing works as before
+- Test special characters and encoding
+- Test empty query strings
+- Test complex nested parameters
+- Test array parameters
+- Test cache behavior
+
+5. Edge Cases to Handle
+- Empty query strings
+- Special characters in query parameters
+- Multiple parameters with same name (arrays)
+- Unicode characters
+- Null/undefined values
+- Nested objects
+- URL encoding/decoding
+
+6. Backward Compatibility
+- Ensure returned object format matches previous querystring.parse output
+- Maintain same behavior for malformed query strings
+- Keep same caching mechanism
