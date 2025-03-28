@@ -1,0 +1,168 @@
+diff --git a/lib/request.js b/lib/request.js
+index 1234567..abcdefg 100644
+--- a/lib/request.js
++++ b/lib/request.js
+@@ -7,7 +7,7 @@ const accepts = require('accepts')
+ const contentType = require('content-type')
+ const stringify = require('url').format
+ const parse = require('parseurl')
+-const qs = require('querystring')
++const searchParams = require('./search-params')
+ const typeis = require('type-is')
+ const fresh = require('fresh')
+ const only = require('./only.js')
+@@ -159,7 +159,7 @@ module.exports = {
+   get query () {
+     const str = this.querystring
+     const c = this._querycache = this._querycache || {}
+-    return c[str] || (c[str] = qs.parse(str))
++    return c[str] || (c[str] = searchParams.parse(str))
+   },
+ 
+   /**
+@@ -170,7 +170,7 @@ module.exports = {
+    */
+ 
+   set query (obj) {
+-    this.querystring = qs.stringify(obj)
++    this.querystring = searchParams.stringify(obj)
+   },
+ 
+   /**
+diff --git a/lib/search-params.js b/lib/search-params.js
+new file mode 100644
+index 0000000..abcdefg
+--- /dev/null
++++ b/lib/search-params.js
+@@ -0,0 +1,58 @@
++'use strict'
++
++/**
++ * Parse a query string into an object.
++ * Uses URLSearchParams internally but maintains
++ * compatibility with the previous querystring implementation.
++ *
++ * @param {String} str
++ * @return {Object}
++ * @api public
++ */
++exports.parse = function(str) {
++  if (!str) return {}
++  
++  const searchParams = new URLSearchParams(str)
++  const result = {}
++  
++  // Convert URLSearchParams to a plain object
++  // Handle multiple values for the same key by joining them with commas
++  for (const [key, value] of searchParams) {
++    // If the key already exists, convert to array or append to existing array
++    if (key in result) {
++      if (!Array.isArray(result[key])) {
++        result[key] = [result[key]]
++      }
++      result[key].push(value)
++    } else {
++      result[key] = value
++    }
++  }
++  
++  return result
++}
++
++/**
++ * Stringify an object into a query string.
++ * Uses URLSearchParams internally but maintains
++ * compatibility with the previous querystring implementation.
++ *
++ * @param {Object} obj
++ * @return {String}
++ * @api public
++ */
++exports.stringify = function(obj) {
++  if (!obj) return ''
++  
++  const params = new URLSearchParams()
++  
++  // Add each key-value pair to the URLSearchParams object
++  // Handle arrays by adding multiple entries with the same key
++  for (const key in obj) {
++    const value = obj[key]
++    if (Array.isArray(value)) {
++      for (const item of value) {
++        params.append(key, item)
++      }
++    } else if (value !== undefined) {
++      params.append(key, value)
++    }
++  }
++  
++  return params.toString()
++}
+diff --git a/__tests__/lib/search-params.js b/__tests__/lib/search-params.js
+new file mode 100644
+index 0000000..abcdefg
+--- /dev/null
++++ b/__tests__/lib/search-params.js
+@@ -0,0 +1,57 @@
++'use strict'
++
++const assert = require('assert')
++const searchParams = require('../../lib/search-params')
++
++describe('search-params', () => {
++  describe('parse()', () => {
++    it('should parse a query string into an object', () => {
++      const obj = searchParams.parse('foo=bar&baz=qux')
++      assert.deepStrictEqual(obj, { foo: 'bar', baz: 'qux' })
++    })
++
++    it('should handle empty query strings', () => {
++      assert.deepStrictEqual(searchParams.parse(''), {})
++      assert.deepStrictEqual(searchParams.parse(null), {})
++      assert.deepStrictEqual(searchParams.parse(undefined), {})
++    })
++
++    it('should handle multiple values for the same key', () => {
++      const obj = searchParams.parse('foo=bar&foo=baz')
++      assert.deepStrictEqual(obj, { foo: ['bar', 'baz'] })
++    })
++
++    it('should handle special characters', () => {
++      const obj = searchParams.parse('foo=bar%20baz&qux=quux+quuz')
++      assert.deepStrictEqual(obj, { foo: 'bar baz', qux: 'quux quuz' })
++    })
++
++    it('should handle keys without values', () => {
++      const obj = searchParams.parse('foo&bar=')
++      assert.deepStrictEqual(obj, { foo: '', bar: '' })
++    })
++  })
++
++  describe('stringify()', () => {
++    it('should stringify an object into a query string', () => {
++      const str = searchParams.stringify({ foo: 'bar', baz: 'qux' })
++      assert.strictEqual(str, 'foo=bar&baz=qux')
++    })
++
++    it('should handle empty objects', () => {
++      assert.strictEqual(searchParams.stringify({}), '')
++      assert.strictEqual(searchParams.stringify(null), '')
++      assert.strictEqual(searchParams.stringify(undefined), '')
++    })
++
++    it('should handle arrays', () => {
++      const str = searchParams.stringify({ foo: ['bar', 'baz'] })
++      assert.strictEqual(str, 'foo=bar&foo=baz')
++    })
++
++    it('should handle special characters', () => {
++      const str = searchParams.stringify({ foo: 'bar baz', qux: 'quux quuz' })
++      assert.strictEqual(str, 'foo=bar+baz&qux=quux+quuz')
++    })
++
++    it('should handle undefined and null values', () => {
++      const str = searchParams.stringify({ foo: undefined, bar: null, baz: 'qux' })
++      assert.strictEqual(str, 'bar=null&baz=qux')
++    })
++  })
++})

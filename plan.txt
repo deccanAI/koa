@@ -1,0 +1,28 @@
+# Plan for Refactoring Koa's Query String Handling
+
+## Objective
+Replace the usage of the querystring module with URLSearchParams to improve compatibility with modern JavaScript standards while maintaining existing functionality.
+
+## Implementation Steps
+
+1. Create a new utility module `lib/search-params.js` that will:
+   - Provide wrapper functions around URLSearchParams to maintain compatibility with the existing API
+   - Handle edge cases and ensure consistent behavior with the previous implementation
+
+2. Modify `lib/request.js` to:
+   - Remove the querystring dependency
+   - Import and use the new search-params utility
+   - Update the query getter/setter methods to use URLSearchParams
+   - Ensure backward compatibility with existing behavior
+
+3. Create tests in `__tests__/lib/search-params.js` to:
+   - Verify the new implementation matches the behavior of the old one
+   - Test edge cases and compatibility concerns
+
+4. Update any other relevant parts of the codebase that might be affected by this change
+
+## Benefits
+- Better alignment with modern web standards
+- Potentially improved performance using native browser APIs
+- Simplified code by using built-in functionality instead of an external dependency
+- Improved maintainability by using standardized APIs
