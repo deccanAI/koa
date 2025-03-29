@@ -86,6 +86,7 @@ describe('ctx.flushHeaders()', () => {
   it('should flush headers first and delay to send data', done => {
     const PassThrough = require('stream').PassThrough
     const app = new Koa()
+    let server
 
     app.use(ctx => {
       ctx.type = 'json'
@@ -94,40 +95,53 @@ describe('ctx.flushHeaders()', () => {
       const stream = ctx.body = new PassThrough()
       ctx.flushHeaders()
 
+      // Reduced timeout from 10000ms to 100ms for faster test execution
       setTimeout(() => {
         stream.end(JSON.stringify({ message: 'hello!' }))
-      }, 10000)
+      }, 100)
     })
 
-    app.listen(function (err) {
-      if (err) return done(err)
+    server = app.listen(function (err) {
+      if (err) {
+        server.close()
+        return done(err)
+      }
 
       const port = this.address().port
-
-      http.request({
+      const req = http.request({
         port
       })
         .on('response', res => {
-          const onData = () => done(new Error('boom'))
+          const onData = () => {
+            res.removeAllListeners()
+            server.close()
+            done(new Error('boom'))
+          }
           res.on('data', onData)
 
           // shouldn't receive any data for a while
           setTimeout(() => {
             res.removeListener('data', onData)
-            done()
-          }, 1000)
+            res.destroy() // Ensure the response is properly destroyed
+            server.close(() => done())
+          }, 50) // Reduced from 1000ms to 50ms
         })
-        .on('error', done)
-        .end()
+        .on('error', err => {
+          server.close(() => done(err))
+        })
+      
+      req.end()
     })
   })
 
   it('should catch stream error', done => {
     const PassThrough = require('stream').PassThrough
     const app = new Koa()
+    let server
+    
     app.once('error', err => {
       assert(err.message === 'mock error')
-      done()
+      server.close(() => done())
     })
 
     app.use(ctx => {
@@ -140,11 +154,21 @@ describe('ctx.flushHeaders()', () => {
 
       setTimeout(() => {
         stream.emit('error', new Error('mock error'))
-      }, 100)
+      }, 50) // Reduced from 100ms to 50ms
     })
 
-    const server = app.listen()
+    server = app.listen()
 
-    request(server).get('/').end()
+    request(server)
+      .get('/')
+      .end((err) => {
+        if (err && !server.listening) {
+          // If server already closed due to the error event above
+          return
+        }
+        if (err && server.listening) {
+          server.close(() => done(err))
+        }
+      })
   })
 })

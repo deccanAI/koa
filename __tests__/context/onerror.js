@@ -78,11 +78,19 @@ describe('ctx.onerror(err)', () => {
 
   it('should ignore error after headerSent', done => {
     const app = new Koa()
+    let server
 
     app.on('error', err => {
       assert.strictEqual(err.message, 'mock error')
       assert.strictEqual(err.headerSent, true)
-      done()
+      // Allow time for the request to complete before closing server
+      setTimeout(() => {
+        if (server && server.listening) {
+          server.close(() => done())
+        } else {
+          done()
+        }
+      }, 10)
     })
 
     app.use(async ctx => {
@@ -93,10 +101,17 @@ describe('ctx.onerror(err)', () => {
       ctx.body = 'response'
     })
 
-    request(app.callback())
+    server = app.listen()
+    
+    request(server)
       .get('/')
       .expect('X-Foo', 'Bar')
-      .expect(200, () => {})
+      .expect(200)
+      .end((err) => {
+        if (err && server && server.listening) {
+          server.close(() => done(err))
+        }
+      })
   })
 
   it('should set status specified in the error using statusCode', () => {

@@ -26,12 +26,15 @@ describe('ctx.href', () => {
 
   it('should work with `GET http://example.com/foo`', done => {
     const app = new Koa()
+    let server
+    
     app.use(ctx => {
       ctx.body = ctx.href
     })
-    app.listen(function () {
+    
+    server = app.listen(function () {
       const address = this.address()
-      http.get({
+      const req = http.get({
         host: 'localhost',
         path: 'http://example.com/foo',
         port: address.port
@@ -42,8 +45,15 @@ describe('ctx.href', () => {
         res.on('data', s => { buf += s })
         res.on('end', () => {
           assert.strictEqual(buf, 'http://example.com/foo')
-          done()
+          server.close(() => done())
         })
+        res.on('error', err => {
+          server.close(() => done(err))
+        })
+      })
+      
+      req.on('error', err => {
+        server.close(() => done(err))
       })
     })
   })

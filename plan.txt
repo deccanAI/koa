@@ -1,0 +1,42 @@
+# Plan for Fixing Leaky Handles in Koa Test Suite
+
+## Problem Analysis
+After reviewing the test files, I've identified several potential sources of leaky handles:
+
+1. Unclosed HTTP servers in tests
+2. Unhandled stream errors
+3. Missing cleanup in tests with timeouts
+4. Tests that create servers but don't properly close them
+
+## Solution Strategy
+
+1. Ensure all HTTP servers created with `app.listen()` are properly closed after tests
+   - Add `afterEach` hooks to close servers
+   - Store server references consistently
+   - Use proper teardown patterns
+
+2. Fix stream handling
+   - Ensure all streams have error handlers
+   - Properly close/destroy streams after tests
+
+3. Address timeout issues
+   - Reduce unnecessarily long timeouts
+   - Ensure tests with timeouts clean up resources
+
+4. Implement consistent patterns
+   - Create helper functions for common server setup/teardown
+   - Standardize how servers are managed across tests
+
+## Implementation Plan
+
+1. Modify `__tests__/response/flushHeaders.js` to fix the long timeout test and ensure server cleanup
+2. Fix `__tests__/response/writable.js` to properly handle socket connections
+3. Update `__tests__/context/onerror.js` to ensure proper server cleanup
+4. Fix `__tests__/request/href.js` to properly close the server
+5. Review and fix any other tests with potential leaks
+
+## Verification
+After implementing changes, verify:
+- All tests pass consistently
+- No hanging processes after test completion
+- No resource leaks reported by Node.js

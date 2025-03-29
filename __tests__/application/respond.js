@@ -655,19 +655,22 @@ describe('app.respond', () => {
 
     it('should handle errors', done => {
       const app = new Koa()
+      let server
 
       app.use(ctx => {
         ctx.set('Content-Type', 'application/json; charset=utf-8')
         ctx.body = fs.createReadStream('does not exist')
       })
 
-      const server = app.listen()
+      server = app.listen()
 
       request(server)
         .get('/')
         .expect('Content-Type', 'text/plain; charset=utf-8')
         .expect(404)
-        .end(done)
+        .end(err => {
+          server.close(() => done(err))
+        })
     })
 
     it('should handle errors when no content status', () => {
@@ -687,6 +690,7 @@ describe('app.respond', () => {
 
     it('should handle all intermediate stream body errors', done => {
       const app = new Koa()
+      let server
 
       app.use(ctx => {
         ctx.body = fs.createReadStream('does not exist')
@@ -694,12 +698,14 @@ describe('app.respond', () => {
         ctx.body = fs.createReadStream('does not exist')
       })
 
-      const server = app.listen()
+      server = app.listen()
 
       request(server)
         .get('/')
         .expect(404)
-        .end(done)
+        .end(err => {
+          server.close(() => done(err))
+        })
     })
   })
 
@@ -745,6 +751,7 @@ describe('app.respond', () => {
   describe('when an error occurs', () => {
     it('should emit "error" on the app', done => {
       const app = new Koa()
+      let server
 
       app.use(ctx => {
         throw new Error('boom')
@@ -752,10 +759,19 @@ describe('app.respond', () => {
 
       app.on('error', err => {
         assert.strictEqual(err.message, 'boom')
-        done()
+        // Give time for the request to complete
+        setTimeout(() => {
+          if (server && server.listening) {
+            server.close(() => done())
+          } else {
+            done()
+          }
+        }, 10)
       })
 
-      request(app.callback())
+      server = app.listen()
+      
+      request(server)
         .get('/')
         .end(() => {})
     })
