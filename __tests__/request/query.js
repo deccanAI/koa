@@ -21,6 +21,29 @@ describe('ctx.query', () => {
     const ctx = context({ url: '/?page=2' })
     assert.strictEqual(ctx.query.page, '2')
   })
+
+  it('should handle array parameters', () => {
+    const ctx = context({ url: '/?colors=red&colors=blue' })
+    assert.deepStrictEqual(ctx.query.colors, ['red', 'blue'])
+  })
+
+  it('should handle mixed single and array parameters', () => {
+    const ctx = context({ url: '/?page=2&colors=red&colors=blue' })
+    assert.strictEqual(ctx.query.page, '2')
+    assert.deepStrictEqual(ctx.query.colors, ['red', 'blue'])
+  })
+
+  it('should handle empty values', () => {
+    const ctx = context({ url: '/?empty=&exists=value' })
+    assert.strictEqual(ctx.query.empty, '')
+    assert.strictEqual(ctx.query.exists, 'value')
+  })
+
+  it('should handle special characters', () => {
+    const ctx = context({ url: '/?q=hello+world&special=%40%23%24' })
+    assert.strictEqual(ctx.query.q, 'hello world')
+    assert.strictEqual(ctx.query.special, '@#$')
+  })
 })
 
 describe('ctx.query=', () => {
@@ -38,5 +61,41 @@ describe('ctx.query=', () => {
     assert.strictEqual(ctx.url, '/store/shoes?page=2')
     assert.strictEqual(ctx.originalUrl, '/store/shoes')
     assert.strictEqual(ctx.request.originalUrl, '/store/shoes')
+  })
+
+  it('should handle array values', () => {
+    const ctx = context({ url: '/store/shoes' })
+    ctx.query = { colors: ['red', 'blue'] }
+    assert.strictEqual(ctx.url, '/store/shoes?colors=red&colors=blue')
+    assert.strictEqual(ctx.querystring, 'colors=red&colors=blue')
+    assert.deepStrictEqual(ctx.query.colors, ['red', 'blue'])
+  })
+
+  it('should handle mixed single and array values', () => {
+    const ctx = context({ url: '/store/shoes' })
+    ctx.query = { page: 2, colors: ['red', 'blue'] }
+    assert.strictEqual(ctx.url, '/store/shoes?page=2&colors=red&colors=blue')
+    assert.strictEqual(ctx.querystring, 'page=2&colors=red&colors=blue')
+    assert.strictEqual(ctx.query.page, '2')
+    assert.deepStrictEqual(ctx.query.colors, ['red', 'blue'])
+  })
+
+  it('should handle special characters', () => {
+    const ctx = context({ url: '/store/shoes' })
+    ctx.query = { q: 'hello world', special: '@#$' }
+    assert.strictEqual(ctx.url, '/store/shoes?q=hello+world&special=%40%23%24')
+    assert.strictEqual(ctx.querystring, 'q=hello+world&special=%40%23%24')
+    assert.strictEqual(ctx.query.q, 'hello world')
+    assert.strictEqual(ctx.query.special, '@#$')
+  })
+
+  it('should ignore undefined values', () => {
+    const ctx = context({ url: '/store/shoes' })
+    ctx.query = { a: 1, b: undefined, c: 3 }
+    assert.strictEqual(ctx.url, '/store/shoes?a=1&c=3')
+    assert.strictEqual(ctx.querystring, 'a=1&c=3')
+    assert.strictEqual(ctx.query.a, '1')
+    assert.strictEqual(ctx.query.c, '3')
+    assert.strictEqual(ctx.query.b, undefined)
   })
 })
