@@ -1,0 +1,283 @@
+diff --git a/lib/application.js b/lib/application.js
+index 1234567..abcdef0 100644
+--- a/lib/application.js
++++ b/lib/application.js
+@@ -214,13 +214,25 @@ module.exports = class Application extends Emitter {
+   callback() {
+     const fn = compose(this.middleware);
+ 
+     if (!this.listenerCount('error')) this.on('error', this.onerror);
+ 
+     const handleRequest = (req, res) => {
+-      const ctx = this.createContext(req, res);
+-      return this.handleRequest(ctx, fn);
++      // Create context for this request
++      const ctx = this.createContext(req, res);
++      
++      // Add request received timestamp for performance tracking
++      ctx._requestReceived = Date.now();
++      
++      // Handle the request with error boundaries
++      try {
++        return this.handleRequest(ctx, fn);
++      } catch (err) {
++        // Handle synchronous errors that might occur during context creation
++        ctx.onerror(err);
++        return Promise.resolve();
++      }
+     };
+ 
+     return handleRequest;
+   }
+ 
+@@ -235,11 +247,19 @@ module.exports = class Application extends Emitter {
+   handleRequest(ctx, fnMiddleware) {
+     const res = ctx.res;
+     res.statusCode = 404;
+-    const onerror = err => ctx.onerror(err);
+-    const handleResponse = () => respond(ctx);
+-    onFinished(res, onerror);
+-    return fnMiddleware(ctx).then(handleResponse).catch(onerror);
++    
++    // Create error handler function
++    const onerror = err => ctx.onerror(err);
++    
++    // Create response handler function
++    const handleResponse = () => respond(ctx);
++    
++    // Register cleanup handler when response is finished
++    onFinished(res, onerror);
++    
++    // Execute middleware chain with proper error handling
++    try {
++      return fnMiddleware(ctx)
++        .then(handleResponse)
++        .catch(onerror);
++    } catch (err) {
++      // Handle synchronous errors in middleware
++      return Promise.reject(err).catch(onerror);
++    }
+   }
+ 
+   /**
+@@ -267,13 +287,21 @@ module.exports = class Application extends Emitter {
+   onerror(err) {
+     // When dealing with cross-globals a normal `instanceof` check doesn't work properly.
+     // See https://github.com/koajs/koa/issues/1466
+     // We can probably remove it once jest fixes https://github.com/facebook/jest/issues/2549.
+     const isNativeError =
+       Object.prototype.toString.call(err) === '[object Error]' ||
+       err instanceof Error;
+-    if (!isNativeError) throw new TypeError(util.format('non-error thrown: %j', err));
++    
++    if (!isNativeError) {
++      // Convert non-error objects to Error instances for consistent handling
++      const wrappedError = new TypeError(util.format('non-error thrown: %j', err));
++      wrappedError.originalError = err;
++      throw wrappedError;
++    }
+ 
++    // Skip logging for 404 errors or errors marked as exposed
+     if (404 === err.status || err.expose) return;
+     if (this.silent) return;
+ 
++    // Format and log the error message
+     const msg = err.stack || err.toString();
+     console.error(`\n${msg.replace(/^/gm, '  ')}\n`);
+   }
+@@ -339,56 +367,95 @@ function respond(ctx) {
+   // allow bypassing koa
+   if (false === ctx.respond) return;
+ 
++  // Check if response is writable
+   if (!ctx.writable) return;
+ 
+   const res = ctx.res;
+   let body = ctx.body;
+   const code = ctx.status;
+ 
+-  // ignore body
++  // Handle empty status codes (204, 205, 304)
+   if (statuses.empty[code]) {
+-    // strip headers
++    // Strip headers for empty responses
+     ctx.body = null;
+     return res.end();
+   }
+ 
++  // Handle HEAD requests
+   if ('HEAD' === ctx.method) {
+     if (!res.headersSent && !ctx.response.has('Content-Length')) {
+       const { length } = ctx.response;
+       if (Number.isInteger(length)) ctx.length = length;
+     }
+     return res.end();
+   }
+ 
+-  // status body
++  // Handle null/undefined body
+   if (null == body) {
+     if (ctx.response._explicitNullBody) {
++      // Handle explicit null body case
+       ctx.response.remove('Content-Type');
+       ctx.response.remove('Transfer-Encoding');
+       return res.end();
+     }
++    
++    // Set appropriate body based on HTTP version
+     if (ctx.req.httpVersionMajor >= 2) {
+       body = String(code);
+     } else {
+       body = ctx.message || String(code);
+     }
++    
++    // Set headers if not already sent
+     if (!res.headersSent) {
+       ctx.type = 'text';
+       ctx.length = Buffer.byteLength(body);
+     }
+     return res.end(body);
+   }
+ 
+-  // responses
++  // Handle Buffer responses
+   if (Buffer.isBuffer(body)) return res.end(body);
++  
++  // Handle string responses
+   if ('string' === typeof body) return res.end(body);
+-  if (body instanceof Stream) return body.pipe(res);
++  
++  // Handle Stream responses with improved error handling
++  if (body instanceof Stream) {
++    // Add error handler to the pipe operation
++    body.pipe(res).on('error', err => {
++      // Destroy the stream on pipe error
++      destroy(body);
++      // Only handle the error if headers haven't been sent
++      if (!res.headersSent) {
++        ctx.onerror(err);
++      }
++    });
++    return;
++  }
+ 
+-  // body: json
+-  body = JSON.stringify(body);
++  // Handle JSON responses with safe serialization
++  try {
++    body = JSON.stringify(body);
++  } catch (err) {
++    // Handle JSON serialization errors
++    ctx.onerror(new Error(`Failed to stringify response body: ${err.message}`));
++    return;
++  }
++  
+   if (!res.headersSent) {
+     ctx.length = Buffer.byteLength(body);
+   }
+   res.end(body);
+ }
+ 
+diff --git a/lib/response.js b/lib/response.js
+index 1234567..abcdef0 100644
+--- a/lib/response.js
++++ b/lib/response.js
+@@ -183,35 +183,45 @@ module.exports = {
+   set body(val) {
+     const original = this._body;
+     this._body = val;
+ 
+-    // no content
++    // Handle null or undefined content
+     if (null == val) {
+       if (!statuses.empty[this.status]) this.status = 204;
+       if (val === null) this._explicitNullBody = true;
+       this.remove('Content-Type');
+       this.remove('Content-Length');
+       this.remove('Transfer-Encoding');
+       return;
+     }
+ 
+-    // set the status
++    // Set default status if not explicitly set
+     if (!this._explicitStatus) this.status = 200;
+ 
+-    // set the content-type only if not yet set
++    // Check if content-type needs to be set
+     const setType = !this.has('Content-Type');
+ 
+-    // string
++    // Handle string body
+     if ('string' === typeof val) {
+-      if (setType) this.type = /^\s*</.test(val) ? 'html' : 'text';
++      if (setType) {
++        // Improved HTML detection with more precise regex
++        this.type = /^\s*<!?(DOCTYPE|html|body)/i.test(val) ? 'html' : 'text';
++      }
+       this.length = Buffer.byteLength(val);
+       return;
+     }
+ 
+-    // buffer
++    // Handle buffer body
+     if (Buffer.isBuffer(val)) {
+       if (setType) this.type = 'bin';
+       this.length = val.length;
+       return;
+     }
+ 
+-    // stream
++    // Handle stream body with improved error handling
+     if (val instanceof Stream) {
++      // Ensure stream is properly destroyed when response is finished
+       onFinish(this.res, destroy.bind(null, val));
+-      if (original != val) {
+-        val.once('error', err => this.ctx.onerror(err));
+-        // overwriting
++      
++      // Only set up new error handlers if this is a new stream
++      if (original !== val) {
++        // Improved error handling for streams
++        val.once('error', err => {
++          // Ensure the error is properly formatted
++          const formattedError = err instanceof Error ? err : new Error(`Stream error: ${err}`);
++          this.ctx.onerror(formattedError);
++        });
++        
++        // Remove content-length when replacing a body with a stream
+         if (null != original) this.remove('Content-Length');
+       }
+ 
+       if (setType) this.type = 'bin';
+       return;
+     }
+ 
+-    // json
++    // Handle JSON body with improved serialization
+     this.remove('Content-Length');
+     this.type = 'json';
+   },
+@@ -520,14 +530,20 @@ module.exports = {
+    */
+ 
+   get writable() {
+-    // can't write any more after response finished
++    // Check if response has finished
+     // response.writableEnded is available since Node > 12.9
+     // https://nodejs.org/api/http.html#http_response_writableended
+     // response.finished is undocumented feature of previous Node versions
+     // https://stackoverflow.com/questions/16254385/undocumented-response-finished-in-node-js
+     if (this.res.writableEnded || this.res.finished) return false;
++    
++    // Check for destroyed state in modern Node versions
++    if (this.res.destroyed) return false;
+     
+     const socket = this.res.socket;
+     // There are already pending outgoing res, but still writable
+     // https://github.com/nodejs/node/blob/v4.4.7/lib/_http_server.js#L486
+     if (!socket) return true;
+-    return socket.writable;
++    
++    // Check if socket is writable and not closed
++    return socket.writable && !socket.destroyed;
+   },
