@@ -1,0 +1,30 @@
+Plan to Fix Leaky Handles in Koa Test Suite
+
+1. AsyncLocalStorage Cleanup
+- Problem: AsyncLocalStorage instances created in Application constructor are not properly cleaned up
+- Solution: Add a cleanup method to properly dispose of AsyncLocalStorage when app is done
+- Implementation: Add close() method to Application class that:
+  a) Cleans up AsyncLocalStorage if it exists
+  b) Removes all listeners
+  c) Closes any open servers
+
+2. Server Resource Management
+- Problem: HTTP servers created by listen() may not be properly closed
+- Solution: Track server instances and ensure they're closed when app is done
+- Implementation:
+  a) Track server instances in Application class
+  b) Add them to cleanup in close() method
+  c) Ensure proper error handling during cleanup
+
+3. Event Listener Cleanup
+- Problem: Event listeners may accumulate across test runs
+- Solution: Ensure all event listeners are removed when app is done
+- Implementation: Add listener cleanup to close() method
+
+4. Edge Cases to Handle
+- Multiple calls to close()
+- Error handling during cleanup
+- Async operations in progress during cleanup
+- Cleanup when app fails to initialize properly
+
+The changes will be minimal and focused on the Application class in lib/application.js, adding proper resource cleanup without modifying the core functionality or test logic.
