@@ -10,24 +10,44 @@ describe('app.request', () => {
   const app2 = new Koa()
 
   it('should merge properties', () => {
+    let server
     app1.use((ctx, next) => {
       assert.strictEqual(ctx.request.message, 'hello')
       ctx.status = 204
     })
 
-    return request(app1.listen())
+    server = app1.listen()
+    
+    return request(server)
       .get('/')
       .expect(204)
+      .then(() => {
+        server.close()
+      })
+      .catch(err => {
+        server.close()
+        throw err
+      })
   })
 
   it('should not affect the original prototype', () => {
+    let server
     app2.use((ctx, next) => {
       assert.strictEqual(ctx.request.message, undefined)
       ctx.status = 204
     })
 
-    return request(app2.listen())
+    server = app2.listen()
+    
+    return request(server)
       .get('/')
       .expect(204)
+      .then(() => {
+        server.close()
+      })
+      .catch(err => {
+        server.close()
+        throw err
+      })
   })
 })
