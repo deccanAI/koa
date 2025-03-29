@@ -28,7 +28,10 @@
     "build": "gen-esm-wrapper . ./dist/koa.mjs",
     "prepare": "npm run build"
   },
-  "repository": "koajs/koa",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/koajs/koa.git"
+  },
   "keywords": [
     "web",
     "app",
@@ -43,7 +46,7 @@
     "accepts": "^1.3.5",
     "cache-content-type": "^1.0.0",
     "content-disposition": "~0.5.2",
-    "content-type": "^1.0.4",
+    "content-type": "^1.0.5",
     "cookies": "~0.8.0",
     "debug": "^4.3.2",
     "delegates": "^1.0.0",
@@ -55,13 +58,15 @@
     "http-assert": "^1.3.0",
     "http-errors": "^1.6.3",
     "is-generator-function": "^1.0.7",
+    "koa": "^2.16.0",
     "koa-compose": "^4.1.0",
     "koa-convert": "^2.0.0",
     "on-finished": "^2.3.0",
     "only": "~0.0.2",
     "parseurl": "^1.3.2",
+    "raw-body": "^3.0.0",
     "statuses": "^1.5.0",
-    "type-is": "^1.6.16",
+    "type-is": "^1.6.18",
     "vary": "^1.1.2"
   },
   "devDependencies": {
@@ -85,5 +90,14 @@
   ],
   "jest": {
     "testEnvironment": "node"
-  }
+  },
+  "directories": {
+    "doc": "docs",
+    "lib": "lib"
+  },
+  "author": "",
+  "bugs": {
+    "url": "https://github.com/koajs/koa/issues"
+  },
+  "homepage": "https://github.com/koajs/koa#readme"
 }
