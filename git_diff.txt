@@ -1,0 +1,109 @@
+diff --git a/lib/context.js b/lib/context.js
+index 1234567..abcdefg 100644
+--- a/lib/context.js
++++ b/lib/context.js
+@@ -123,6 +123,9 @@ const proto = module.exports = {
+     if (!isNativeError) err = new Error(util.format('non-error thrown: %j', err))
+ 
++    // Ensure error has headers property
++    if (!err.headers) err.headers = {}
++
+     let headerSent = false
+     if (this.headerSent || !this.writable) {
+       headerSent = err.headerSent = true
+@@ -130,6 +133,7 @@ const proto = module.exports = {
+ 
+     // delegate
+     this.app.emit('error', err, this)
++    // Try-catch added to prevent crashes during error handling
+ 
+     // nothing we can do here other
+     // than delegate to the app-level
+@@ -139,29 +143,36 @@ const proto = module.exports = {
+     }
+ 
+     const { res } = this
++    try {
++      // first unset all headers
++      /* istanbul ignore else */
++      if (typeof res.getHeaderNames === 'function') {
++        res.getHeaderNames().forEach(name => res.removeHeader(name))
++      } else {
++        res._headers = {} // Node < 7.7
++      }
+ 
+-    // first unset all headers
+-    /* istanbul ignore else */
+-    if (typeof res.getHeaderNames === 'function') {
+-      res.getHeaderNames().forEach(name => res.removeHeader(name))
+-    } else {
+-      res._headers = {} // Node < 7.7
+-    }
+-
+-    // then set those specified
+-    this.set(err.headers)
++      // then set those specified in the error
++      if (err.headers && typeof err.headers === 'object') {
++        this.set(err.headers)
++      }
+ 
+-    // force text/plain
+-    this.type = 'text'
++      // force text/plain
++      this.type = 'text'
+ 
+-    let statusCode = err.status || err.statusCode
++      // Get appropriate status code
++      let statusCode = err.status || err.statusCode
+ 
+-    // ENOENT support
+-    if (err.code === 'ENOENT') statusCode = 404
++      // ENOENT support
++      if (err.code === 'ENOENT') statusCode = 404
+ 
+-    // default to 500
+-    if (typeof statusCode !== 'number' || !statuses.message[statusCode]) statusCode = 500
++      // default to 500
++      if (typeof statusCode !== 'number' || !statuses.message[statusCode]) statusCode = 500
+ 
++      // Only end the response if it's still writable
++      if (this.writable) {
++        res.end(msg)
++      }
++    } catch (e) {
++      // If we encounter an error while handling the original error,
++      // log it but don't crash the application
++      this.app.emit('error', e, this)
++    }
+ 
+diff --git a/lib/response.js b/lib/response.js
+index 1234567..abcdefg 100644
+--- a/lib/response.js
++++ b/lib/response.js
+@@ -526,6 +526,15 @@ module.exports = {
+     // https://stackoverflow.com/questions/16254385/undocumented-response-finished-in-node-js
+     if (this.res.writableEnded || this.res.finished) return false
+ 
++    // Check if headers were sent
++    if (this.headerSent) {
++      // If headers were sent but the response isn't finished,
++      // we can still write the body
++      const socket = this.res.socket
++      // No socket means we can't write, but the response might still be writable
++      if (!socket) return this.res.writable !== false
++    }
++
+     const socket = this.res.socket
+     // There are already pending outgoing res, but still writable
+     // https://github.com/nodejs/node/blob/v4.4.7/lib/_http_server.js#L486
+@@ -301,6 +310,11 @@ module.exports = {
+       // Only set up error handler if this is a new stream
+       if (original !== val) {
+         // Forward stream errors to context error handler
+-        val.once('error', err => this.ctx.onerror(err))
++        val.once('error', err => {
++          // Only call onerror if the context exists and has an onerror method
++          if (this.ctx && typeof this.ctx.onerror === 'function') {
++            this.ctx.onerror(err)
++          }
++        })
